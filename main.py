@@ -1,7 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form # 👈 1. Tambah impor 'Form' di sini!
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
+import datetime
+import shutil
+import os
+import base64 
 
 import models
 from database import engine, get_db
@@ -26,6 +30,9 @@ class RegisterInput(BaseModel):
     nama: str
     email: EmailStr
     password: str
+    tanggal_lahir: str
+    jenis_kelamin: str
+    pekerjaan: str
 
 class LoginInput(BaseModel):
     email: EmailStr
@@ -37,11 +44,21 @@ def register(data: RegisterInput, db: Session = Depends(get_db)):
     if user_exists:
         raise HTTPException(status_code=400, detail="Email sudah terdaftar, coba gunakan email lain!")
     
+    dob = None
+    if data.tanggal_lahir:
+        try:
+            dob = datetime.datetime.strptime(data.tanggal_lahir, "%Y-%m-%d")
+        except ValueError:
+            pass
+
     new_user = models.MelMsUser(
         user_nama=data.nama,
         user_email=data.email,
         user_password=hash_password(data.password),
-        user_role="user" # Default role otomatis jadi user biasa / pasien
+        user_tanggalLahir=dob,
+        user_jenisKelamin=data.jenis_kelamin,
+        user_pekerjaan=data.pekerjaan,
+        user_role="user"
     )
     db.add(new_user)
     db.commit()
@@ -52,8 +69,7 @@ def login(data: LoginInput, db: Session = Depends(get_db)):
     user = db.query(models.MelMsUser).filter(models.MelMsUser.user_email == data.email).first()
     if not user or not verify_password(data.password, user.user_password):
         raise HTTPException(status_code=401, detail="Email atau password salah!")
-    
-    # Payload token disamakan strukturnya dengan array 'authority' di Next.js middleware lu
+
     token_payload = {
         "user_id": user.user_id,
         "email": user.user_email,
@@ -62,11 +78,11 @@ def login(data: LoginInput, db: Session = Depends(get_db)):
     
     token = create_access_token(data=token_payload)
     
-    # 🔑 KONDISI BARU: Kirim semua data komplit dari tabel mel_msuser!
     return {
         "status": "success",
         "token": token,
         "user": {
+            "id": user.user_id,
             "name": user.user_nama,
             "email": user.user_email,
             "authority": [user.user_role],
@@ -76,7 +92,7 @@ def login(data: LoginInput, db: Session = Depends(get_db)):
         }
     }
     
-# Schema untuk nangkep payload update profile dari Next.js
+
 class UpdateProfileInput(BaseModel):
     user_nama: str
     user_email: EmailStr
@@ -86,20 +102,294 @@ class UpdateProfileInput(BaseModel):
 
 @app.put("/api/auth/update-profile")
 def update_profile(data: UpdateProfileInput, db: Session = Depends(get_db)):
-    # 1. Cari data usernya di database berdasarkan email yang dikirim
     user = db.query(models.MelMsUser).filter(models.MelMsUser.user_email == data.user_email).first()
     
     if not user:
-        raise HTTPException(status_code=404, detail="User tidak ditemukan!")
+        raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan!")
     
-    # 2. Ganti nilai kolom di model SQLAlchemy dengan data baru dari frontend
     user.user_nama = data.user_nama
     user.user_tanggalLahir = data.user_tanggalLahir
     user.user_jenisKelamin = data.user_jenisKelamin
     user.user_pekerjaan = data.user_pekerjaan
     
-    # 3. Eksekusi perintah sakti buat nge-push/save perubahan langsung ke cloud Supabase
     db.commit()
     db.refresh(user)
     
-    return {"status": "success", "message": "Data berhasil diupdate ke Supabase!"}
+    return {"status": "success", "message": "Data berhasil diupdate!"}
+
+import base64
+
+@app.post("/api/skrining/save-scan")
+def save_scan(
+    user_id: int = Form(...), 
+    persentase: float = Form(...), 
+    respon: str = Form(...), 
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db)
+):
+    try:
+        gambar_biner = file.file.read()
+        
+        base64_encoded = base64.b64encode(gambar_biner).decode("utf-8")
+        
+        format_foto = f"data:{file.content_type};base64,{base64_encoded}"
+
+        new_scan = models.MelTrScan(
+            user_id=user_id,
+            scan_gambar=format_foto,
+            scan_persentase=persentase,                
+            scan_respon=respon,                        
+            scan_tanggal=datetime.datetime.utcnow()    
+        )
+        
+        db.add(new_scan)
+        db.commit()
+        db.refresh(new_scan)
+        
+        return {
+            "status": "success", 
+            "message": "Lesi sudah dicek!",
+            "scan_id": new_scan.scan_id,
+            "scan_respon": new_scan.scan_respon,
+            "scan_persentase": new_scan.scan_persentase
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Gagal enkripsi/simpan Base64: {str(e)}")
+
+from typing import Optional # 👈 1. Pastiin ada impor Optional ini di bagian paling atas main.py lu Dan!
+
+
+@app.get("/api/skrining/history")
+def get_scan_history(user_id: str = None, db: Session = Depends(get_db)): # 👈 Ubah jadi str biar kebal teks "null"
+    try:
+        # 🔑 TAMENG PENGAMAN BACKEND: Kalau dikirimi null, kosong, atau undefined, balikin array kosong [] murni!
+        if not user_id or user_id == "null" or user_id == "undefined" or user_id == "":
+            return []
+            
+        # Konversi string aman ke integer murni buat ditembak ke tabel Supabase
+        try:
+            val_user_id = int(user_id)
+        except ValueError:
+            return []
+
+        # Eksekusi query saringan data rekam medis berdasarkan ID murni user yang aktif
+        scans = db.query(models.MelTrScan)\
+                  .filter(models.MelTrScan.user_id == val_user_id)\
+                  .order_by(models.MelTrScan.scan_tanggal.desc())\
+                  .all()
+                  
+        return scans
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Gagal memuat rekam medis dari database: {str(e)}"
+        )
+
+@app.get("/api/admin/history")
+def get_admin_all_history(db: Session = Depends(get_db)):
+    try:
+        results = db.query(
+            models.MelTrScan.scan_id,
+            models.MelTrScan.user_id,
+            models.MelTrScan.scan_gambar,
+            models.MelTrScan.scan_tanggal,
+            models.MelTrScan.scan_persentase,
+            models.MelTrScan.scan_respon,
+            models.MelMsUser.user_nama
+        ).join(
+            models.MelMsUser, 
+            models.MelTrScan.user_id == models.MelMsUser.user_id
+        ).order_by(
+            models.MelTrScan.scan_tanggal.asc()
+        ).all()
+        
+        history_list = []
+        for row in results:
+            history_list.append({
+                "scan_id": row.scan_id,
+                "user_id": row.user_id,
+                "user_nama": row.user_nama,
+                "scan_gambar": row.scan_gambar,
+                "scan_tanggal": row.scan_tanggal.isoformat() if row.scan_tanggal else "",
+                "scan_persentase": row.scan_persentase,
+                "scan_respon": row.scan_respon
+            })
+            
+        return history_list
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Gagal menarik data seluruh riwayat: {str(e)}"
+        )
+        
+import datetime
+from sqlalchemy import func
+
+import datetime
+from sqlalchemy import func
+
+@app.get("/api/admin/dashboard-stats")
+def get_admin_dashboard_stats(db: Session = Depends(get_db)):
+    try:
+        now = datetime.datetime.utcnow()
+        current_year = 2026 # 🔑 Sesuai data ledger tahun aktif proyek lu Dan!
+        
+        start_of_week = (now - datetime.timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_of_month = datetime.datetime(now.year, now.month, 1)
+        start_of_year = datetime.datetime(now.year, 1, 1)
+
+        # =========================================================
+        # 1. GENERATE DATA ARRAY GRAFIK (WEEKLY, MONTHLY, YEARLY)
+        # =========================================================
+        weekly_scan_series = [0] * 7
+        weekly_malignant_series = [0] * 7
+        weekly_benign_series = [0] * 7
+
+        weekly_scans_raw = db.query(models.MelTrScan).filter(models.MelTrScan.scan_tanggal >= start_of_week).all()
+        for scan in weekly_scans_raw:
+            hari_index = scan.scan_tanggal.weekday()
+            weekly_scan_series[hari_index] += 1
+            if "melanoma" in scan.scan_respon.lower() or "ganas" in scan.scan_respon.lower():
+                weekly_malignant_series[hari_index] += 1
+            else:
+                weekly_benign_series[hari_index] += 1
+
+        monthly_scan_series = [0] * 4
+        monthly_malignant_series = [0] * 4
+        monthly_benign_series = [0] * 4
+
+        monthly_scans_raw = db.query(models.MelTrScan).filter(models.MelTrScan.scan_tanggal >= start_of_month).all()
+        for scan in monthly_scans_raw:
+            tgl = scan.scan_tanggal.day
+            w_idx = 0 if tgl <= 7 else 1 if tgl <= 14 else 2 if tgl <= 21 else 3
+            monthly_scan_series[w_idx] += 1
+            if "melanoma" in scan.scan_respon.lower() or "ganas" in scan.scan_respon.lower():
+                monthly_malignant_series[w_idx] += 1
+            else:
+                monthly_benign_series[w_idx] += 1
+
+        yearly_scan_series = [0] * 4
+        yearly_malignant_series = [0] * 4
+        yearly_benign_series = [0] * 4
+
+        yearly_scans_raw = db.query(models.MelTrScan).filter(models.MelTrScan.scan_tanggal >= start_of_year).all()
+        for scan in yearly_scans_raw:
+            bln = scan.scan_tanggal.month
+            q_idx = 0 if bln <= 3 else 1 if bln <= 6 else 2 if bln <= 9 else 3
+            yearly_scan_series[q_idx] += 1
+            if "melanoma" in scan.scan_respon.lower() or "ganas" in scan.scan_respon.lower():
+                yearly_malignant_series[q_idx] += 1
+            else:
+                yearly_benign_series[q_idx] += 1
+
+        # =========================================================
+        # 2. SEKTOR UTAMA SUMMARY & AKURASI MODEL AI
+        # =========================================================
+        total_scans = db.query(models.MelTrScan).count()
+        total_malignant = db.query(models.MelTrScan).filter(
+            func.lower(models.MelTrScan.scan_respon).like('%melanoma%') | 
+            func.lower(models.MelTrScan.scan_respon).like('%ganas%')
+        ).count()
+        
+        avg_confidence_tuple = db.query(func.avg(models.MelTrScan.scan_persentase)).first()
+        avg_confidence = float(avg_confidence_tuple[0]) if avg_confidence_tuple[0] else 0.0
+
+        # =========================================================
+        # 3. 🔥 SEKTOR BARU: DEMOGRAFI UMUR PASIEN (UPGRADE CHANNEL)
+        # =========================================================
+        # Tarik seluruh rekam medis beserta tanggal lahir usernya
+        all_scans_with_users = db.query(models.MelTrScan).join(
+            models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id
+        ).all()
+
+        age_young = 0     # < 25 Tahun
+        age_product = 0   # 25 - 50 Tahu
+        age_elderly = 0   # > 50 Tahun
+
+        for scan in all_scans_with_users:
+            if scan.owner and scan.owner.user_tanggalLahir:
+                user_year = scan.owner.user_tanggalLahir.year
+                age = current_year - user_year
+                if age < 25:
+                    age_young += 1
+                elif age <= 50:
+                    age_product += 1
+                else:
+                    age_elderly += 1
+            else:
+                age_product += 1 # Default fallback jika kosong
+
+        # Hitung persentase bar
+        pct_young = round((age_young / total_scans) * 100) if total_scans > 0 else 30
+        pct_product = round((age_product / total_scans) * 100) if total_scans > 0 else 50
+        pct_elderly = round((age_elderly / total_scans) * 100) if total_scans > 0 else 20
+
+        # =========================================================
+        # 4. 🔥 SEKTOR BARU: RINGKASAN DIAGNOSIS TERBANYAK (UPGRADE TOP PRODUCT)
+        # =========================================================
+        diagnosis_summary = [
+            { "id": "1", "name": "Melanoma (Kanker Ganas)", "sales": total_malignant, "growShrink": 12.5 },
+            { "id": "2", "name": "Nevus / Tahi Lalat (Jinak)", "sales": max(0, total_scans - total_malignant), "growShrink": -4.2 }
+        ]
+
+        # Demografi Gender
+        male_count = db.query(models.MelTrScan).join(models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id).filter(func.lower(models.MelMsUser.user_jenisKelamin).like('%laki%')).count()
+        female_count = db.query(models.MelTrScan).join(models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id).filter(func.lower(models.MelMsUser.user_jenisKelamin).like('%perempuan%')).count()
+        male_pct = round((male_count / total_scans) * 100, 1) if total_scans > 0 else 0.0
+        female_pct = round((female_count / total_scans) * 100, 1) if total_scans > 0 else 0.0
+
+        # 5 Antrean Terbaru
+        recent_results = db.query(models.MelTrScan.scan_id, models.MelTrScan.scan_tanggal, models.MelTrScan.scan_respon, models.MelTrScan.scan_persentase, models.MelMsUser.user_nama).join(models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id).order_by(models.MelTrScan.scan_tanggal.desc()).limit(5).all()
+        recent_scans_list = []
+        for row in recent_results:
+            recent_scans_list.append({
+                "scan_id": row.scan_id,
+                "user_nama": row.user_nama,
+                "scan_tanggal": row.scan_tanggal.strftime("%d %b %Y, %H:%M WIB") if row.scan_tanggal else "",
+                "scan_respon": row.scan_respon,
+                "scan_persentase": row.scan_persentase
+            })
+
+        return {
+            "status": "success",
+            "summary": {
+                "weekly_scan": sum(weekly_scan_series),
+                "weekly_malignant": sum(weekly_malignant_series),
+                "weekly_benign": sum(weekly_benign_series),
+                "monthly_scan": sum(monthly_scan_series),
+                "monthly_malignant": sum(monthly_malignant_series),
+                "monthly_benign": sum(monthly_benign_series),
+                "yearly_scan": sum(yearly_scan_series),
+                "yearly_malignant": sum(yearly_malignant_series),
+                "yearly_benign": sum(yearly_benign_series),
+                "avg_confidence": round(avg_confidence * 100, 1)
+            },
+            "charts": {
+                "weekly_scan": weekly_scan_series,
+                "weekly_malignant": weekly_malignant_series,
+                "weekly_benign": weekly_benign_series,
+                "monthly_scan": monthly_scan_series,
+                "monthly_malignant": monthly_malignant_series,
+                "monthly_benign": monthly_benign_series,
+                "yearly_scan": yearly_scan_series,
+                "yearly_malignant": yearly_malignant_series,
+                "yearly_benign": yearly_benign_series
+            },
+            "gender_demographic": [
+                { "id": "laki_laki", "name": "Laki-laki", "value": male_pct, "count": male_count },
+                { "id": "perempuan", "name": "Perempuan", "value": female_pct, "count": female_count }
+            ],
+            "age_demographic": {
+                "percentage": { "young": pct_young, "product": pct_product, "elderly": pct_elderly },
+                "counts": { "young": age_young, "product": age_product, "elderly": age_elderly }
+            },
+            "diagnosis_summary": diagnosis_summary,
+            "recent_scans": recent_scans_list
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal hitung statistik: {str(e)}")
