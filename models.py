@@ -13,24 +13,22 @@ class MelMsUser(Base):
     user_tanggalLahir = Column(DateTime, nullable=True)
     user_jenisKelamin = Column(String(20), nullable=True)
     user_pekerjaan = Column(String(100), nullable=True)
-    user_role = Column(String(20), default="user") # Nanti isinya 'user' atau 'admin'
+    user_role = Column(String(20), default="user")
     user_status = Column(Integer, default=1)
     user_createAt = Column(DateTime, default=datetime.datetime.utcnow)
     user_updateAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
-    # Relasi ke tabel scan (One-to-Many)
     scans = relationship("MelTrScan", back_populates="owner")
 
 class MelTrScan(Base):
     __tablename__ = "mel_trscan"
 
     scan_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("mel_msuser.user_id"), nullable=False) # FK murni!
+    user_id = Column(Integer, ForeignKey("mel_msuser.user_id"), nullable=False)
     scan_gambar = Column(Text, nullable=False)
     scan_tanggal = Column(DateTime, default=datetime.datetime.utcnow)
     scan_persentase = Column(Float, nullable=False)
     scan_respon = Column(Text, nullable=True)
     scan_responGambar = Column(Text, nullable=True)
 
-    # Relasi balik ke model User
     owner = relationship("MelMsUser", back_populates="scans")

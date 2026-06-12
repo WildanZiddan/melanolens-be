@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form # 👈 1. Tambah impor 'Form' di sini!
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -11,12 +11,10 @@ import models
 from database import engine, get_db
 from auth_utils import hash_password, verify_password, create_access_token
 
-# Perintah sakti otomatis bikin tabel ke cloud Supabase pas backend start
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Melanolens - API Backend")
 
-# Mengizinkan Frontend Next.js (port 3000) buat nembak API tanpa diblokir CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -25,7 +23,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Schema validasi inputan dari frontend pake Pydantic
 class RegisterInput(BaseModel):
     nama: str
     email: EmailStr
@@ -158,23 +155,20 @@ def save_scan(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Gagal enkripsi/simpan Base64: {str(e)}")
 
-from typing import Optional # 👈 1. Pastiin ada impor Optional ini di bagian paling atas main.py lu Dan!
+from typing import Optional
 
 
 @app.get("/api/skrining/history")
-def get_scan_history(user_id: str = None, db: Session = Depends(get_db)): # 👈 Ubah jadi str biar kebal teks "null"
+def get_scan_history(user_id: str = None, db: Session = Depends(get_db)):
     try:
-        # 🔑 TAMENG PENGAMAN BACKEND: Kalau dikirimi null, kosong, atau undefined, balikin array kosong [] murni!
         if not user_id or user_id == "null" or user_id == "undefined" or user_id == "":
             return []
             
-        # Konversi string aman ke integer murni buat ditembak ke tabel Supabase
         try:
             val_user_id = int(user_id)
         except ValueError:
             return []
 
-        # Eksekusi query saringan data rekam medis berdasarkan ID murni user yang aktif
         scans = db.query(models.MelTrScan)\
                   .filter(models.MelTrScan.user_id == val_user_id)\
                   .order_by(models.MelTrScan.scan_tanggal.desc())\
@@ -236,15 +230,12 @@ from sqlalchemy import func
 def get_admin_dashboard_stats(db: Session = Depends(get_db)):
     try:
         now = datetime.datetime.utcnow()
-        current_year = 2026 # 🔑 Sesuai data ledger tahun aktif proyek lu Dan!
+        current_year = 2026
         
         start_of_week = (now - datetime.timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
         start_of_month = datetime.datetime(now.year, now.month, 1)
         start_of_year = datetime.datetime(now.year, 1, 1)
 
-        # =========================================================
-        # 1. GENERATE DATA ARRAY GRAFIK (WEEKLY, MONTHLY, YEARLY)
-        # =========================================================
         weekly_scan_series = [0] * 7
         weekly_malignant_series = [0] * 7
         weekly_benign_series = [0] * 7
@@ -286,9 +277,6 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
             else:
                 yearly_benign_series[q_idx] += 1
 
-        # =========================================================
-        # 2. SEKTOR UTAMA SUMMARY & AKURASI MODEL AI
-        # =========================================================
         total_scans = db.query(models.MelTrScan).count()
         total_malignant = db.query(models.MelTrScan).filter(
             func.lower(models.MelTrScan.scan_respon).like('%melanoma%') | 
@@ -298,17 +286,13 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
         avg_confidence_tuple = db.query(func.avg(models.MelTrScan.scan_persentase)).first()
         avg_confidence = float(avg_confidence_tuple[0]) if avg_confidence_tuple[0] else 0.0
 
-        # =========================================================
-        # 3. 🔥 SEKTOR BARU: DEMOGRAFI UMUR PASIEN (UPGRADE CHANNEL)
-        # =========================================================
-        # Tarik seluruh rekam medis beserta tanggal lahir usernya
         all_scans_with_users = db.query(models.MelTrScan).join(
             models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id
         ).all()
 
-        age_young = 0     # < 25 Tahun
-        age_product = 0   # 25 - 50 Tahu
-        age_elderly = 0   # > 50 Tahun
+        age_young = 0
+        age_product = 0
+        age_elderly = 0
 
         for scan in all_scans_with_users:
             if scan.owner and scan.owner.user_tanggalLahir:
@@ -321,28 +305,22 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
                 else:
                     age_elderly += 1
             else:
-                age_product += 1 # Default fallback jika kosong
+                age_product += 1
 
-        # Hitung persentase bar
         pct_young = round((age_young / total_scans) * 100) if total_scans > 0 else 30
         pct_product = round((age_product / total_scans) * 100) if total_scans > 0 else 50
         pct_elderly = round((age_elderly / total_scans) * 100) if total_scans > 0 else 20
 
-        # =========================================================
-        # 4. 🔥 SEKTOR BARU: RINGKASAN DIAGNOSIS TERBANYAK (UPGRADE TOP PRODUCT)
-        # =========================================================
         diagnosis_summary = [
             { "id": "1", "name": "Melanoma (Kanker Ganas)", "sales": total_malignant, "growShrink": 12.5 },
             { "id": "2", "name": "Nevus / Tahi Lalat (Jinak)", "sales": max(0, total_scans - total_malignant), "growShrink": -4.2 }
         ]
 
-        # Demografi Gender
         male_count = db.query(models.MelTrScan).join(models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id).filter(func.lower(models.MelMsUser.user_jenisKelamin).like('%laki%')).count()
         female_count = db.query(models.MelTrScan).join(models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id).filter(func.lower(models.MelMsUser.user_jenisKelamin).like('%perempuan%')).count()
         male_pct = round((male_count / total_scans) * 100, 1) if total_scans > 0 else 0.0
         female_pct = round((female_count / total_scans) * 100, 1) if total_scans > 0 else 0.0
 
-        # 5 Antrean Terbaru
         recent_results = db.query(models.MelTrScan.scan_id, models.MelTrScan.scan_tanggal, models.MelTrScan.scan_respon, models.MelTrScan.scan_persentase, models.MelMsUser.user_nama).join(models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id).order_by(models.MelTrScan.scan_tanggal.desc()).limit(5).all()
         recent_scans_list = []
         for row in recent_results:
