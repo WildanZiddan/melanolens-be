@@ -80,31 +80,41 @@ def reset_password(data: ResetPasswordInput, db: Session = Depends(get_db)):
 
 @app.post("/api/auth/login")
 def login(data: LoginInput, db: Session = Depends(get_db)):
-    user = db.query(models.MelMsUser).filter(models.MelMsUser.user_email == data.email).first()
-    if not user or not verify_password(data.password, user.user_password):
-        raise HTTPException(status_code=401, detail="Email atau password salah!")
+    try:
+        user = db.query(models.MelMsUser).filter(models.MelMsUser.user_email == data.email).first()
+        if not user or not verify_password(data.password, user.user_password):
+            raise HTTPException(status_code=401, detail="Email atau password salah!")
 
-    token_payload = {
-        "user_id": user.user_id,
-        "email": user.user_email,
-        "authority": [user.user_role]
-    }
-    
-    token = create_access_token(data=token_payload)
-    
-    return {
-        "status": "success",
-        "token": token,
-        "user": {
-            "id": user.user_id,
-            "name": user.user_nama,
+        role = user.user_role if user.user_role else "user"
+        nama = user.user_nama if user.user_nama else user.user_email
+
+        token_payload = {
+            "user_id": user.user_id,
             "email": user.user_email,
-            "authority": [user.user_role],
-            "tanggal_lahir": user.user_tanggalLahir if user.user_tanggalLahir else "",
-            "jenis_kelamin": user.user_jenisKelamin if user.user_jenisKelamin else "",
-            "pekerjaan": user.user_pekerjaan if user.user_pekerjaan else ""
+            "authority": [role]
         }
-    }
+        
+        token = create_access_token(data=token_payload)
+        
+        return {
+            "status": "success",
+            "token": token,
+            "user": {
+                "id": user.user_id,
+                "name": nama,
+                "email": user.user_email,
+                "authority": [role],
+                "tanggal_lahir": str(user.user_tanggalLahir) if user.user_tanggalLahir else "",
+                "jenis_kelamin": user.user_jenisKelamin if user.user_jenisKelamin else "",
+                "pekerjaan": user.user_pekerjaan if user.user_pekerjaan else ""
+            }
+        }
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"[LOGIN ERROR]: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Login Exception: {str(e)}")
+
     
 
 class UpdateProfileInput(BaseModel):
