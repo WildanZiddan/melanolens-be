@@ -1,17 +1,14 @@
-﻿--extra-index-url https://download.pytorch.org/whl/cpu
-torch
-torchvision
-Pillow
-numpy
-timm
-matplotlib
-fastapi
-uvicorn
-sqlalchemy
-psycopg2-binary
-passlib
-bcrypt
-PyJWT
-pydantic
-email-validator
-python-multipart
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.1.2+cpu
+torchvision==0.16.2+cpu
+Pillow>=9.0.0
+numpy>=1.23.0
+matplotlib>=3.7.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+bcrypt>=4.0.0
+PyJWT>=2.8.0
+pydantic[email]>=2.0.0
+python-multipart>=0.0.6
