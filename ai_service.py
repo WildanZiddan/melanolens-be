@@ -63,17 +63,48 @@ transform_pipeline = transforms.Compose([
     )
 ])
 
+MODEL_DOWNLOAD_URL = "https://media.githubusercontent.com/media/WildanZiddan/melanolens-be/main/models/ViT_B_16_Standard_70_15_15.pth"
+
+def download_model_if_needed(target_path: str):
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    needs_dl = False
+    
+    if not os.path.exists(target_path):
+        print(f"[AI Model] Model file missing at {target_path}, starting download...")
+        needs_dl = True
+    elif os.path.getsize(target_path) < 1000000:
+        print(f"[AI Model] Model file is a Git LFS pointer ({os.path.getsize(target_path)} bytes), downloading full binary...")
+        needs_dl = True
+        
+    if needs_dl:
+        try:
+            import urllib.request
+            print(f"[AI Model] Downloading 343MB model from {MODEL_DOWNLOAD_URL}...")
+            req = urllib.request.Request(MODEL_DOWNLOAD_URL, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req) as resp, open(target_path, "wb") as out:
+                chunk_size = 1024 * 1024
+                while True:
+                    chunk = resp.read(chunk_size)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+            print(f"[AI Model] Download complete: {target_path} ({os.path.getsize(target_path)} bytes)")
+        except Exception as e:
+            print(f"[AI Model] Failed to download model binary: {e}")
+
 def load_ai_model():
     global model
     target_path = MODEL_PATH
     
+    download_model_if_needed(target_path)
+
     if not os.path.exists(target_path):
         if os.path.exists(MODELS_DIR):
-            pth_files = [f for f in os.listdir(MODELS_DIR) if f.endswith('.pth') or f.endswith('.pt')]
+            pth_files = [f for f in os.listdir(MODELS_DIR) if (f.endswith('.pth') or f.endswith('.pt')) and os.path.getsize(os.path.join(MODELS_DIR, f)) > 1000000]
             if pth_files:
                 target_path = os.path.join(MODELS_DIR, pth_files[0])
 
-    if os.path.exists(target_path):
+    if os.path.exists(target_path) and os.path.getsize(target_path) > 1000000:
         try:
             base_vit = models.vit_b_16()
             base_vit.heads = CustomHeads(2)
@@ -91,7 +122,7 @@ def load_ai_model():
             print(f'[AI Model] ERROR loading model: {str(e)}')
             return False
     else:
-        print(f'[AI Model] WARNING: File model belum ditemukan di {MODELS_DIR}')
+        print(f'[AI Model] WARNING: File model belum valid atau belum di-download di {MODELS_DIR}')
         return False
 
 # Panggil saat modul di-import
