@@ -30,3 +30,4 @@ Pillow
 numpy
 timm
 matplotlib
+gradio
