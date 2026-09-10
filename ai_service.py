@@ -141,13 +141,6 @@ def load_ai_model():
             state_dict = torch.load(target_path, map_location=device, weights_only=False)
             wrapper.load_state_dict(state_dict, strict=True)
 
-            calib_path = os.path.join(MODELS_DIR, 'calibrated_head.pt')
-            if os.path.exists(calib_path):
-                calib = torch.load(calib_path, map_location=device)
-                wrapper.base_model.heads.head[1].weight.data = calib['weight'].to(device)
-                wrapper.base_model.heads.head[1].bias.data = calib['bias'].to(device)
-                print(f'[AI Model] Calibrated classification head loaded successfully from {calib_path}')
-
             wrapper.to(device)
             wrapper.eval()
             
