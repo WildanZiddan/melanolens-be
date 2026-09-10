@@ -70,13 +70,19 @@ class ResetPasswordInput(BaseModel):
 
 @app.post("/api/auth/reset-password")
 def reset_password(data: ResetPasswordInput, db: Session = Depends(get_db)):
-    user = db.query(models.MelMsUser).filter(models.MelMsUser.user_email == data.email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Email tidak ditemukan di sistem!")
-    
-    user.user_password = hash_password(data.new_password)
-    db.commit()
-    return {"status": "success", "message": "Password berhasil diperbarui! Silakan login dengan password baru."}
+    try:
+        user = db.query(models.MelMsUser).filter(models.MelMsUser.user_email == data.email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Email tidak ditemukan di sistem!")
+        
+        user.user_password = hash_password(data.new_password)
+        db.commit()
+        return {"status": "success", "message": "Password berhasil diperbarui! Silakan login dengan password baru."}
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Gagal reset password: {str(e)}")
 
 @app.post("/api/auth/login")
 def login(data: LoginInput, db: Session = Depends(get_db)):
