@@ -88,7 +88,12 @@ def reset_password(data: ResetPasswordInput, db: Session = Depends(get_db)):
 def login(data: LoginInput, db: Session = Depends(get_db)):
     try:
         user = db.query(models.MelMsUser).filter(models.MelMsUser.user_email == data.email).first()
-        if not user or not verify_password(data.password, user.user_password):
+        if not user:
+            print(f"[LOGIN DEBUG] User not found for email: {data.email}")
+            raise HTTPException(status_code=401, detail="Email atau password salah!")
+            
+        if not verify_password(data.password, user.user_password):
+            print(f"[LOGIN DEBUG] Password mismatch for user: {data.email}")
             raise HTTPException(status_code=401, detail="Email atau password salah!")
 
         role = user.user_role if user.user_role else "user"
