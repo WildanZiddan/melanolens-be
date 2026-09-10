@@ -43,18 +43,18 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 CLASS_LABELS = {
     0: {
-        'label': 'Nevus / Tahi Lalat (Jinak)',
-        'english': 'Benign',
-        'risk_level': 'Rendah',
-        'color': '#10B981',
-        'recommendation': 'Lesi tampak jinak (non-kanker). Tetap lakukan pemantauan berkala pada bentuk dan warna lesi.'
-    },
-    1: {
         'label': 'Melanoma (Kanker Ganas)',
         'english': 'Malignant / Melanoma',
         'risk_level': 'Tinggi',
         'color': '#EF4444',
         'recommendation': 'Terdeteksi indikasi lesi ganas (Melanoma). Sangat disarankan untuk segera berkonsultasi dengan Dokter Spesialis Dermatologi/Kulit.'
+    },
+    1: {
+        'label': 'Nevus / Tahi Lalat (Jinak)',
+        'english': 'Benign / Nevus',
+        'risk_level': 'Rendah',
+        'color': '#10B981',
+        'recommendation': 'Lesi tampak jinak (non-kanker). Tetap lakukan pemantauan berkala pada bentuk dan warna lesi.'
     }
 }
 
@@ -219,14 +219,15 @@ def predict_lesion(image_bytes: bytes):
             outputs = model(tensor_img)
             probabilities = torch.softmax(outputs, dim=1)[0]
             
-            prob_benign = float(probabilities[0].item())
-            prob_malignant = float(probabilities[1].item())
+            # Index 0: melanoma (huruf m), Index 1: nevus (huruf n) sesuai urutan alfabetis PyTorch ImageFolder
+            prob_malignant = float(probabilities[0].item())
+            prob_benign = float(probabilities[1].item())
             
             predicted_class_idx = int(torch.argmax(probabilities).item())
-            confidence = prob_malignant if predicted_class_idx == 1 else prob_benign
+            confidence = prob_malignant if predicted_class_idx == 0 else prob_benign
             
         class_info = CLASS_LABELS[predicted_class_idx]
-        is_malignant = (predicted_class_idx == 1)
+        is_malignant = (predicted_class_idx == 0)
         
         heatmap_base64 = generate_heatmap_overlay(pil_img, confidence, is_malignant)
         
