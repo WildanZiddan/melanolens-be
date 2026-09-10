@@ -6,3 +6,7 @@ venv/
 env/
 
 .env
+*.pth
+*.pt
+*.db
+uploaded_scans/

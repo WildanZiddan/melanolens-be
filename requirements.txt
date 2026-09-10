@@ -24,3 +24,9 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.48.0
 python-multipart
+torch
+torchvision
+Pillow
+numpy
+timm
+matplotlib

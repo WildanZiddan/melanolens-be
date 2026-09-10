@@ -8,6 +8,8 @@ import os
 import base64 
 
 import models
+import ai_service
+from typing import Optional
 from database import engine, get_db
 from auth_utils import hash_password, verify_password, create_access_token
 
@@ -119,6 +121,46 @@ def update_profile(data: UpdateProfileInput, db: Session = Depends(get_db)):
     return {"status": "success", "message": "Data berhasil diupdate!"}
 
 import base64
+
+
+@app.post("/api/skrining/predict")
+def predict_lesion_api(
+    file: UploadFile = File(...),
+    user_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db)
+):
+    try:
+        image_bytes = file.file.read()
+        prediction_result = ai_service.predict_lesion(image_bytes)
+        
+        if prediction_result.get("status") != "success":
+            raise HTTPException(status_code=500, detail=prediction_result.get("message", "Gagal memproses gambar AI"))
+            
+        scan_id = None
+        if user_id:
+            try:
+                base64_encoded = base64.b64encode(image_bytes).decode("utf-8")
+                format_foto = f"data:{file.content_type};base64,{base64_encoded}"
+                
+                new_scan = models.MelTrScan(
+                    user_id=user_id,
+                    scan_gambar=format_foto,
+                    scan_persentase=prediction_result["confidence_decimal"],
+                    scan_respon=prediction_result["label"],
+                    scan_tanggal=datetime.datetime.utcnow()
+                )
+                db.add(new_scan)
+                db.commit()
+                db.refresh(new_scan)
+                scan_id = new_scan.scan_id
+            except Exception as db_err:
+                print(f"[DB Save Error]: {db_err}")
+                db.rollback()
+
+        prediction_result["scan_id"] = scan_id
+        return prediction_result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error prediksi AI: {str(e)}")
 
 @app.post("/api/skrining/save-scan")
 def save_scan(
