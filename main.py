@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -15,7 +16,16 @@ from auth_utils import hash_password, verify_password, create_access_token
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Melanolens - API Backend")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: jalankan model loading di background thread
+    print("[Startup] Melanolens API starting up...")
+    ai_service.start_background_load()
+    yield
+    # Shutdown
+    print("[Shutdown] Melanolens API shutting down...")
+
+app = FastAPI(title="Melanolens - API Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -154,6 +164,17 @@ def update_profile(data: UpdateProfileInput, db: Session = Depends(get_db)):
 
 import base64
 
+
+
+@app.get("/api/skrining/model-status")
+def model_status():
+    """Cek status model AI apakah sudah siap digunakan."""
+    return {
+        "model_ready": ai_service.model_ready,
+        "model_loading": ai_service.model_loading,
+        "model_load_error": ai_service.model_load_error,
+        "device": str(ai_service.device),
+    }
 
 @app.post("/api/skrining/predict")
 def predict_lesion_api(
