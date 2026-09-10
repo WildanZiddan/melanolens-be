@@ -63,7 +63,7 @@ transform_pipeline = transforms.Compose([
     )
 ])
 
-MODEL_DOWNLOAD_URL = "https://media.githubusercontent.com/media/WildanZiddan/melanolens-be/main/models/ViT_B_16_Standard_70_15_15.pth"
+MODEL_DOWNLOAD_URL = "https://github.com/WildanZiddan/melanolens-be/releases/download/v1.0.0/ViT_B_16_Standard_70_15_15.pth"
 
 def download_model_if_needed(target_path: str):
     os.makedirs(MODELS_DIR, exist_ok=True)
