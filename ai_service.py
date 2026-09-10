@@ -58,6 +58,17 @@ CLASS_LABELS = {
     }
 }
 
+
+def pad_to_square(pil_img: Image.Image) -> Image.Image:
+    """Preserve aspect ratio by padding rectangular images before 224x224 resize."""
+    w, h = pil_img.size
+    if w == h:
+        return pil_img
+    pad_size = max(w, h)
+    padded = Image.new('RGB', (pad_size, pad_size), (128, 128, 128))
+    padded.paste(pil_img, ((pad_size - w) // 2, (pad_size - h) // 2))
+    return padded
+
 transform_pipeline = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -220,7 +231,8 @@ def predict_lesion(image_bytes: bytes):
 
     try:
         pil_img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-        tensor_img = transform_pipeline(pil_img).unsqueeze(0).to(device)
+        padded_img = pad_to_square(pil_img)
+        tensor_img = transform_pipeline(padded_img).unsqueeze(0).to(device)
         
         model.eval()
         with torch.no_grad():
