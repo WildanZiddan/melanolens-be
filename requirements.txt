@@ -1,4 +1,11 @@
-﻿fastapi
+﻿--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+Pillow
+numpy
+timm
+matplotlib
+fastapi
 uvicorn
 sqlalchemy
 psycopg2-binary
@@ -8,10 +15,3 @@ PyJWT
 pydantic
 email-validator
 python-multipart
-torch
-torchvision
-Pillow
-numpy
-timm
-matplotlib
-gradio
