@@ -270,7 +270,7 @@ def get_scan_history(user_id: str = None, db: Session = Depends(get_db)):
 
         scans = db.query(models.MelTrScan)\
                   .filter(models.MelTrScan.user_id == val_user_id)\
-                  .order_by(models.MelTrScan.scan_tanggal.desc())\
+                  .order_by(models.MelTrScan.scan_tanggal.asc())\
                   .all()
                   
         return scans
