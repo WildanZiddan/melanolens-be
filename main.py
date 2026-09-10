@@ -67,6 +67,21 @@ def register(data: RegisterInput, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success", "message": "Pengguna berhasil didaftarkan!"}
 
+
+class ResetPasswordInput(BaseModel):
+    email: EmailStr
+    new_password: str
+
+@app.post("/api/auth/reset-password")
+def reset_password(data: ResetPasswordInput, db: Session = Depends(get_db)):
+    user = db.query(models.MelMsUser).filter(models.MelMsUser.user_email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Email tidak ditemukan di sistem!")
+    
+    user.user_password = hash_password(data.new_password)
+    db.commit()
+    return {"status": "success", "message": "Password berhasil diperbarui! Silakan login dengan password baru."}
+
 @app.post("/api/auth/login")
 def login(data: LoginInput, db: Session = Depends(get_db)):
     user = db.query(models.MelMsUser).filter(models.MelMsUser.user_email == data.email).first()
