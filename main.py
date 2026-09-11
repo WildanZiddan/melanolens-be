@@ -195,11 +195,13 @@ def predict_lesion_api(
                 base64_encoded = base64.b64encode(image_bytes).decode("utf-8")
                 format_foto = f"data:{file.content_type};base64,{base64_encoded}"
                 
+                tds_str = f" [TDS: {prediction_result['abcd']['tds']}]" if "abcd" in prediction_result else ""
                 new_scan = models.MelTrScan(
                     user_id=user_id,
                     scan_gambar=format_foto,
                     scan_persentase=prediction_result["confidence_decimal"],
-                    scan_respon=prediction_result["label"],
+                    scan_respon=f"{prediction_result['label']}{tds_str}",
+                    scan_responGambar=prediction_result.get("heatmap_base64"),
                     scan_tanggal=datetime.datetime.utcnow()
                 )
                 db.add(new_scan)
