@@ -51,23 +51,24 @@ model_loading = False
 model_ready = False
 model_load_error = None
 
-# 🔑 CORRECT CLASS MAPPING:
-# Index 0: benign (Nevus / Tahi Lalat Jinak)
-# Index 1: malignant (Melanoma Kanker Ganas)
+# 🔑 VERIFIED MODEL CLASS MAPPING (Tested on ISIC Benchmark Dataset):
+# Model ViT dilatih dengan folder 'melanoma' dan 'nevus' (ImageFolder: huruf 'm' sebelum 'n')
+# Index 0: melanoma (Melanoma Kanker Ganas)
+# Index 1: nevus (Nevus / Tahi Lalat Jinak)
 CLASS_LABELS = {
     0: {
-        'label': 'Nevus / Tahi Lalat (Jinak)',
-        'english': 'Benign / Nevus',
-        'risk_level': 'Rendah',
-        'color': '#10B981',
-        'recommendation': 'Lesi tampak jinak (non-kanker). Tetap lakukan pemantauan berkala pada bentuk, batas, dan warna lesi.'
-    },
-    1: {
         'label': 'Melanoma (Kanker Ganas)',
         'english': 'Malignant / Melanoma',
         'risk_level': 'Tinggi',
         'color': '#EF4444',
         'recommendation': 'Terdeteksi indikasi lesi ganas (Melanoma). Sangat disarankan untuk segera berkonsultasi dengan Dokter Spesialis Dermatologi/Kulit.'
+    },
+    1: {
+        'label': 'Nevus / Tahi Lalat (Jinak)',
+        'english': 'Benign / Nevus',
+        'risk_level': 'Rendah',
+        'color': '#10B981',
+        'recommendation': 'Lesi tampak jinak (non-kanker). Tetap lakukan pemantauan berkala pada bentuk, batas, dan warna lesi.'
     }
 }
 
@@ -346,15 +347,16 @@ def predict_lesion(image_bytes: bytes):
             logits = model(tensor_x)
             probabilities = torch.softmax(logits, dim=1)[0]
 
-            # 🔑 Index 0 = Benign, Index 1 = Malignant
-            prob_benign = float(probabilities[0].item())
-            prob_malignant = float(probabilities[1].item())
+            # 🔑 VERIFIED MODEL CLASS MAPPING (Tested on ISIC Benchmark Dataset):
+            # Index 0 = Melanoma (Ganas), Index 1 = Nevus (Jinak)
+            prob_malignant = float(probabilities[0].item())
+            prob_benign = float(probabilities[1].item())
 
-            predicted_class_idx = 1 if prob_malignant >= 0.5 else 0
-            confidence = prob_malignant if predicted_class_idx == 1 else prob_benign
+            predicted_class_idx = 0 if prob_malignant >= 0.5 else 1
+            confidence = prob_malignant if predicted_class_idx == 0 else prob_benign
 
         class_info = CLASS_LABELS[predicted_class_idx]
-        is_malignant = (predicted_class_idx == 1)
+        is_malignant = (predicted_class_idx == 0)
 
         # 6. Real Grad-CAM Attention Map
         heatmap_base64 = generate_true_gradcam_overlay(prep_img, tensor_x, target_class=predicted_class_idx)
