@@ -1,0 +1,110 @@
+{
+  "artifact": "GatedMobileNetV2_SE_ISIC3B_seed42.pth",
+  "architecture": "GatedMobileNetV2 (SE trunk)",
+  "description": "MobileNetV2 + Squeeze-and-Excitation on the final 1280x7x7 map (reduction 16, +204,800 params) with a 1x1-conv localization head (1281 params) that multiplicatively gates the shared feature map before pooling: A7 = sigmoid(loc_head(F_att)), F_pooled = AvgPool(F_att * A7), A = sigmoid(upsample(loc_head(F_att), 28)). Trained on ISIC 2016 Part3B with auxiliary Dice supervision against expert lesion masks (lambda=1.0), gate head on its own Adam group at lr=3e-2.",
+  "why_this_model": "Of every configuration measured on the clean 376-image split it gave the best malignant sensitivity and the best explanation available. On the deployed seed it recalls 0.7432 of malignant cases (19 FN) against 0.6486 (26 FN) for the plain-trunk arm at the same seed and learning rate; and its own Dice-supervised gate map localises far better than any Grad-CAM channel in the study (IoU@0.5 0.7646, rank-AUC 0.9892).",
+  "seed_choice": "seed 42. Deliberately NOT the best-AUC seed on the test set (seed 2026 = 0.8269 vs 0.8065 here, seed 7 = 0.8117) so the deployed model is not test-set selected; it also matches the seed convention of the previously deployed plain gated trunk.",
+  "head_lr_choice": "3e-2, from the Q7 robustness sweep {3e-2, 1e-1, 3e-1} = mean test AUC 0.8150 / 0.8115 / 0.8083. Max |delta AUC| across all 12 arm/seed pairs was 0.0106, so 1e-1 is not a tuned artifact; 3e-1 significantly degraded the supervised map (loc Dice 0.8077 -> 0.7869, p=0.01). Ordering: 3e-2 >= 1e-1 > 3e-1.",
+  "source_arm": "runs/loc_experiment/20260912_221206_lrsweep_lr003/arms/gate_se_lam1_seed42 (research project C:\\Users\\Pongo\\Downloads\\MelanomaProblemSolving)",
+  "torch_version_trained": "2.6.0+cu124",
+  "torch_version_note": "state_dict only - no TorchScript, so it loads on the backend's torch==2.1.2+cpu. Verified with a strict load under torch 2.1.2+cpu / numpy 1.26.4.",
+  "params_total": 2432515,
+  "params_breakdown": {
+    "features": 2258036,
+    "attention_SE": 204800,
+    "loc_head": 1281,
+    "classifier": 2562,
+    "note": "the checkpoint's state_dict tensors sum to 2,466,679 because they also include BatchNorm running statistics and num_batches_tracked (buffers, not parameters)"
+  },
+  "input": {
+    "shape": [1, 3, 224, 224],
+    "color_order": "RGB",
+    "dtype": "float32",
+    "normalisation": {
+      "scale": "pixel/255",
+      "mean": [0.485, 0.456, 0.406],
+      "std": [0.229, 0.224, 0.225]
+    },
+    "preprocessing": [
+      "DullRazor hair removal: RGB->gray, elliptical blackhat (k = clip(min(H,W)//30, 9, 17), forced odd), GaussianBlur(3,3), threshold 15, dilate 5x5 ellipse, cv2.inpaint TELEA radius 3. NOTE: no morphological OPEN step.",
+      "Shades-of-Grey colour constancy, power=6.0, L2-normalised illuminant scaled by sqrt(3), clip 0..255",
+      "aspect-preserving resize (INTER_AREA) to 224 on the long side, centred zero padding to 224x224"
+    ],
+    "preprocessing_warning": "gating_service.py uses the training-exact recipe above. ai_service.remove_hair_dullrazor adds an extra cv2.MORPH_OPEN 3x3 step that training never had - do not route this model through it."
+  },
+  "outputs": {
+    "logits": "shape [1,2]",
+    "gate_map_A7": "shape [1,1,7,7] sigmoid gate at feature resolution",
+    "gate_map_A": "shape [1,1,28,28] same field upsampled bilinearly (align_corners=False)"
+  },
+  "class_mapping": {
+    "class_to_idx": {"benign": 0, "malignant": 1},
+    "positive_idx": 1
+  },
+  "test_set": {
+    "n": 376,
+    "n_malignant": 74,
+    "split": "ISIC 2016 Part3B official test, leak-free (5 duplicates removed)",
+    "note": "the 379-image numbers in MELANOLENS_GATING_INTEGRATION.md come from the pre-clean split; all figures here are the clean-split protocol"
+  },
+  "test_metrics_deployed_seed42": {
+    "roc_auc": 0.8065,
+    "accuracy": 0.7527,
+    "balanced_accuracy": 0.7491,
+    "malignant_precision": 0.4264,
+    "malignant_sensitivity": 0.7432,
+    "malignant_f1": 0.5419,
+    "macro_f1": 0.6862,
+    "tn": 228, "fp": 74, "fn": 19, "tp": 55
+  },
+  "test_metrics_3seed_mean_lr3e-2": {
+    "roc_auc": "0.8150 +/- 0.0087",
+    "accuracy": "0.7553 +/- 0.0142",
+    "balanced_accuracy": "0.7406 +/- 0.0107",
+    "malignant_precision": "0.4283 +/- 0.0188",
+    "malignant_sensitivity": "0.7162 +/- 0.0191",
+    "malignant_f1": "0.5357 +/- 0.0151",
+    "fp": "71.0 +/- 5.7",
+    "fn": "21.0 +/- 1.4",
+    "seeds": [7, 42, 2026],
+    "test_localization_dice": 0.8374
+  },
+  "same_seed_comparison_vs_plain_trunk": {
+    "note": "gate_se vs gate (no attention) at seed 42 and lr 3e-2, clean split - isolates the SE module",
+    "roc_auc": "0.8065 vs 0.7960",
+    "malignant_sensitivity": "0.7432 vs 0.6486",
+    "fn": "19 vs 26",
+    "fp": "74 vs 63",
+    "test_localization_dice": "0.8347 vs 0.8234",
+    "cam_iou_at_0.4": "0.4861 vs 0.4517",
+    "faithfulness": "0.1674 vs 0.1615"
+  },
+  "test_localization": {
+    "gate_map_iou_at_0.5": 0.7646,
+    "gate_map_dice_at_0.5": 0.8545,
+    "gate_map_rank_auc": 0.9892,
+    "gate_map_topk_iou": 0.7842,
+    "gate_area_fraction": 0.2416,
+    "expert_lesion_area_fraction": 0.2265,
+    "n": 60,
+    "note": "3-seed mean of the supervised map A against expert masks, first 60 masked test images"
+  },
+  "gradcam": {
+    "target_layer": "features[-1] (1280x7x7)",
+    "with_eigen_smooth": {"iou_at_0.4": 0.4958, "rank_auc": 0.9628, "topk_iou": 0.7005},
+    "without_eigen_smooth": {"iou_at_0.4": 0.4866, "rank_auc": 0.9460, "topk_iou": 0.6635},
+    "n": 60,
+    "note": "3-seed means. The gate map above is the better explanation on every metric; Grad-CAM is served for continuity with the existing UI."
+  },
+  "known_limitations": [
+    "Operating point is argmax at 0.5. Training used a 50/50 sampler while the test set is 19.7% malignant, so precision is 0.4264 and FP (74) far exceeds FN (19): the model over-flags. No validation-based threshold fix measured better (delta F1 +0.006..+0.034 with sign flips), so the threshold is left as-is and documented.",
+    "3 seeds only; the SE-vs-plain-trunk deltas are p~0.069 on sensitivity and non-significant on AUC, so the SE advantage is directional, not established.",
+    "The 134-image validation split cannot resolve differences below ~0.12 AUC (bootstrap 95% CI width 0.26), so validation-based model selection in this project is unreliable.",
+    "Numbers above come from the research project's clean-split evaluation; the backend was verified on CPU for load/inference/overlay only."
+  ],
+  "verification": {
+    "script": "verify_se_backend.py",
+    "checks": "strict state_dict load; parameter count; SE block changes the logits; gate changes the logits; gate-map contract; torch.Tensor.numpy() bridge (numpy<2 trap); predict_lesion() returns a classification plus non-empty Grad-CAM and gate-map data URLs on 3 real images",
+    "result": "PASS under torch 2.1.2+cpu / numpy 1.26.4"
+  }
+}

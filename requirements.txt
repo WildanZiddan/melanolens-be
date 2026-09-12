@@ -1,11 +1,16 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.1.2+cpu
 torchvision==0.16.2+cpu
-opencv-python-headless>=4.8.0
+# NOTE: torch 2.1.2+cpu is compiled against NumPy 1.x. If NumPy 2.x is installed,
+# `torch.Tensor.numpy()` raises "Numpy is not available" and both Grad-CAM and the
+# gate-map overlay fail SILENTLY (they are caught and returned as empty strings),
+# so the API still returns 200 with a classification but no explanation image.
+numpy>=1.23.0,<2
+# opencv-python-headless 5.x requires numpy>=2, which conflicts with the line above.
+opencv-python-headless>=4.8.0,<5
 grad-cam>=1.5.0
 scipy>=1.10.0
 Pillow>=9.0.0
-numpy>=1.23.0
 matplotlib>=3.7.0
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
