@@ -223,6 +223,7 @@ def save_scan(
     persentase: float = Form(...), 
     respon: str = Form(...), 
     file: UploadFile = File(...), 
+    heatmap: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     try:
@@ -236,7 +237,8 @@ def save_scan(
             user_id=user_id,
             scan_gambar=format_foto,
             scan_persentase=persentase,                
-            scan_respon=respon,                        
+            scan_respon=respon,
+            scan_responGambar=heatmap,                        
             scan_tanggal=datetime.datetime.utcnow()    
         )
         
@@ -290,6 +292,7 @@ def get_admin_all_history(db: Session = Depends(get_db)):
             models.MelTrScan.scan_id,
             models.MelTrScan.user_id,
             models.MelTrScan.scan_gambar,
+            models.MelTrScan.scan_responGambar,
             models.MelTrScan.scan_tanggal,
             models.MelTrScan.scan_persentase,
             models.MelTrScan.scan_respon,
@@ -308,6 +311,7 @@ def get_admin_all_history(db: Session = Depends(get_db)):
                 "user_id": row.user_id,
                 "user_nama": row.user_nama,
                 "scan_gambar": row.scan_gambar,
+                "scan_responGambar": row.scan_responGambar,
                 "scan_tanggal": row.scan_tanggal.isoformat() if row.scan_tanggal else "",
                 "scan_persentase": row.scan_persentase,
                 "scan_respon": row.scan_respon
@@ -341,11 +345,15 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
         weekly_malignant_series = [0] * 7
         weekly_benign_series = [0] * 7
 
-        weekly_scans_raw = db.query(models.MelTrScan).filter(models.MelTrScan.scan_tanggal >= start_of_week).all()
+        weekly_scans_raw = db.query(
+            models.MelTrScan.scan_tanggal, 
+            models.MelTrScan.scan_respon
+        ).filter(models.MelTrScan.scan_tanggal >= start_of_week).all()
         for scan in weekly_scans_raw:
             hari_index = scan.scan_tanggal.weekday()
             weekly_scan_series[hari_index] += 1
-            if "melanoma" in scan.scan_respon.lower() or "ganas" in scan.scan_respon.lower():
+            resp = (scan.scan_respon or "").lower()
+            if "melanoma" in resp or "ganas" in resp or "malignant" in resp:
                 weekly_malignant_series[hari_index] += 1
             else:
                 weekly_benign_series[hari_index] += 1
@@ -354,12 +362,16 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
         monthly_malignant_series = [0] * 4
         monthly_benign_series = [0] * 4
 
-        monthly_scans_raw = db.query(models.MelTrScan).filter(models.MelTrScan.scan_tanggal >= start_of_month).all()
+        monthly_scans_raw = db.query(
+            models.MelTrScan.scan_tanggal, 
+            models.MelTrScan.scan_respon
+        ).filter(models.MelTrScan.scan_tanggal >= start_of_month).all()
         for scan in monthly_scans_raw:
             tgl = scan.scan_tanggal.day
             w_idx = 0 if tgl <= 7 else 1 if tgl <= 14 else 2 if tgl <= 21 else 3
             monthly_scan_series[w_idx] += 1
-            if "melanoma" in scan.scan_respon.lower() or "ganas" in scan.scan_respon.lower():
+            resp = (scan.scan_respon or "").lower()
+            if "melanoma" in resp or "ganas" in resp or "malignant" in resp:
                 monthly_malignant_series[w_idx] += 1
             else:
                 monthly_benign_series[w_idx] += 1
@@ -368,12 +380,16 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
         yearly_malignant_series = [0] * 4
         yearly_benign_series = [0] * 4
 
-        yearly_scans_raw = db.query(models.MelTrScan).filter(models.MelTrScan.scan_tanggal >= start_of_year).all()
+        yearly_scans_raw = db.query(
+            models.MelTrScan.scan_tanggal, 
+            models.MelTrScan.scan_respon
+        ).filter(models.MelTrScan.scan_tanggal >= start_of_year).all()
         for scan in yearly_scans_raw:
             bln = scan.scan_tanggal.month
             q_idx = 0 if bln <= 3 else 1 if bln <= 6 else 2 if bln <= 9 else 3
             yearly_scan_series[q_idx] += 1
-            if "melanoma" in scan.scan_respon.lower() or "ganas" in scan.scan_respon.lower():
+            resp = (scan.scan_respon or "").lower()
+            if "melanoma" in resp or "ganas" in resp or "malignant" in resp:
                 yearly_malignant_series[q_idx] += 1
             else:
                 yearly_benign_series[q_idx] += 1
@@ -381,23 +397,24 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
         total_scans = db.query(models.MelTrScan).count()
         total_malignant = db.query(models.MelTrScan).filter(
             func.lower(models.MelTrScan.scan_respon).like('%melanoma%') | 
-            func.lower(models.MelTrScan.scan_respon).like('%ganas%')
+            func.lower(models.MelTrScan.scan_respon).like('%ganas%') |
+            func.lower(models.MelTrScan.scan_respon).like('%malignant%')
         ).count()
         
         avg_confidence_tuple = db.query(func.avg(models.MelTrScan.scan_persentase)).first()
         avg_confidence = float(avg_confidence_tuple[0]) if avg_confidence_tuple[0] else 0.0
 
-        all_scans_with_users = db.query(models.MelTrScan).join(
-            models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id
+        all_scans_with_users = db.query(models.MelMsUser.user_tanggalLahir).join(
+            models.MelTrScan, models.MelTrScan.user_id == models.MelMsUser.user_id
         ).all()
 
         age_young = 0
         age_product = 0
         age_elderly = 0
 
-        for scan in all_scans_with_users:
-            if scan.owner and scan.owner.user_tanggalLahir:
-                user_year = scan.owner.user_tanggalLahir.year
+        for row in all_scans_with_users:
+            if row.user_tanggalLahir:
+                user_year = row.user_tanggalLahir.year
                 age = current_year - user_year
                 if age < 25:
                     age_young += 1
@@ -413,8 +430,8 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
         pct_elderly = round((age_elderly / total_scans) * 100) if total_scans > 0 else 20
 
         diagnosis_summary = [
-            { "id": "1", "name": "Melanoma (Kanker Ganas)", "sales": total_malignant, "growShrink": 12.5 },
-            { "id": "2", "name": "Nevus / Tahi Lalat (Jinak)", "sales": max(0, total_scans - total_malignant), "growShrink": -4.2 }
+            { "id": "1", "name": "Malignant", "sales": total_malignant, "growShrink": 12.5 },
+            { "id": "2", "name": "Benign", "sales": max(0, total_scans - total_malignant), "growShrink": -4.2 }
         ]
 
         male_count = db.query(models.MelTrScan).join(models.MelMsUser, models.MelTrScan.user_id == models.MelMsUser.user_id).filter(func.lower(models.MelMsUser.user_jenisKelamin).like('%laki%')).count()
