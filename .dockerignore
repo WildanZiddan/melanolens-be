@@ -1,0 +1,12 @@
+# Deployed app serves ONLY the Gated MobileNetV2 checkpoint (~10 MB).
+# The 328 MB ViT checkpoint is NOT used at runtime and is excluded on purpose.
+.git
+.venv
+venv
+__pycache__
+*.pyc
+*.db
+.gitignore
+README.md
+models/ViT_B_16_Standard_70_15_15.pth
+*.ipynb

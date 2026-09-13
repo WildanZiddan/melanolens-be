@@ -8,3 +8,6 @@ env/
 .env
 *.db
 uploaded_scans/
+
+# Large unused checkpoints (not needed at runtime; re-fetch from GH release if ever needed)
+models/ViT_B_16_Standard_70_15_15.pth
