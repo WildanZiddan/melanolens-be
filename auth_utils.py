@@ -26,3 +26,10 @@ def create_access_token(data: dict):
     expire = datetime.datetime.utcnow() + datetime.timedelta(days=1)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_access_token(token: str):
+    """Decode and validate a JWT. Returns the payload dict, or None if invalid/expired."""
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except Exception:
+        return None

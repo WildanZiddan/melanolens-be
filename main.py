@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form, Header
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ import models
 import gating_service as ai_service
 from typing import Optional
 from database import engine, get_db
-from auth_utils import hash_password, verify_password, create_access_token
+from auth_utils import hash_password, verify_password, create_access_token, verify_access_token
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -26,6 +26,18 @@ async def lifespan(app: FastAPI):
     print("[Shutdown] Melanolens API shutting down...")
 
 app = FastAPI(title="Melanolens - API Backend", lifespan=lifespan)
+
+def require_admin(authorization: str = Header(None, alias="Authorization")):
+    """Validate the Bearer JWT and require the 'admin' authority."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Berkas admin: belum masuk (token dibutuhkan).")
+    payload = verify_access_token(authorization.split(" ", 1)[1])
+    if not payload:
+        raise HTTPException(status_code=401, detail="Berkas admin: token tidak valid atau suekses.")
+    authority = payload.get("authority") or []
+    if "admin" not in authority:
+        raise HTTPException(status_code=403, detail="Berkas admin: peran 'admin' dibutuhkan.")
+    return payload
 
 app.add_middleware(
     CORSMiddleware,
@@ -286,7 +298,7 @@ def get_scan_history(user_id: str = None, db: Session = Depends(get_db)):
         )
 
 @app.get("/api/admin/history")
-def get_admin_all_history(db: Session = Depends(get_db)):
+def get_admin_all_history(_admin: dict = Depends(require_admin), db: Session = Depends(get_db)):
     try:
         results = db.query(
             models.MelTrScan.scan_id,
@@ -332,7 +344,7 @@ import datetime
 from sqlalchemy import func
 
 @app.get("/api/admin/dashboard-stats")
-def get_admin_dashboard_stats(db: Session = Depends(get_db)):
+def get_admin_dashboard_stats(_admin: dict = Depends(require_admin), db: Session = Depends(get_db)):
     try:
         now = datetime.datetime.utcnow()
         current_year = 2026
