@@ -1,0 +1,31 @@
+{
+  "artifact": "GatedMobileNetV2_SE_ISIC3B_seed42.pth",
+  "architecture": "GatedAttentionMobileNetV2 (SE trunk) \u2014 gate-se",
+  "description": "Deployed gate_se seed42 finetuned on a leak-excluded 10k subset of the 60k ISIC-archive library (epoch 1 of 8) with mixed supervision: 764 masked ISIC3B train at lambda=1 (CE+Dice) + 10k maskless at lambda=0.",
+  "source_checkpoint": "Training_Code/runs/loc_experiment/finetune10k_seed42/arms/gate_se_ft10k_seed42_long8ep/weights/epoch_1.pth",
+  "base_artifact": "GatedMobileNetV2_SE_ISIC3B_seed42 (original deployed gate_se)",
+  "epoch": 1,
+  "finetune": {
+    "data": "10k leak-excluded 60k (5000 benign + 5000 malignant); pHash<=5 to the 900 train+val and the 376 test excluded (1930 files)",
+    "mixed_supervision": "32 masked (lambda=1) + 96 maskless (lambda=0) per batch",
+    "optimizer": "Adam backbone 1e-4 / loc_head 3e-3, cosine to 1e-6, AMP",
+    "steps": 105,
+    "seed": 42
+  },
+  "metrics_clean_test_376": {
+    "roc_auc": 0.8122,
+    "malignant_sensitivity": 0.7027,
+    "malignant_precision": null,
+    "note": "see result.json for full metrics"
+  },
+  "metrics_heldout_ood_3000": {
+    "roc_auc": 0.9355,
+    "malignant_sensitivity": 0.8727,
+    "note": "broad ISIC-archive slice disjoint from train and test"
+  },
+  "class_mapping": {
+    "benign": 0,
+    "malignant": 1
+  },
+  "preprocessing": "gating_service.py training-exact recipe (DullRazor NO MORPH_OPEN, Shades-of-Grey p=6, 224 pad, ImageNet norm)"
+}

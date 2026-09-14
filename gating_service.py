@@ -19,7 +19,7 @@ The gate is not decoration: the classifier physically cannot see regions the gat
 marks as background, which is why this model's explanation map tracks the lesion
 better than the same network's Grad-CAM (localization Dice 0.816 vs Grad-CAM IoU 0.4445).
 
-Artifact expected at: models/GatedMobileNetV2_SE_ISIC3B_seed42.pth (bare state_dict)
+Artifact expected at: models/GatedMobileNetV2_SE_ISIC3B_seed42_ft10k_ep1.pth (bare state_dict)
 
 ⚠ CLASS INDEX ORDER — this model is the OPPOSITE of the ViT model
 -----------------------------------------------------------------
@@ -253,7 +253,7 @@ MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
 # drop it in models/, point MODEL_FILENAME at it and set attention_type=None -- the
 # plain-trunk checkpoint has no attention.* keys, so the strict load fails loudly
 # rather than running a mismatched model.
-MODEL_FILENAME = 'GatedMobileNetV2_SE_ISIC3B_seed42.pth'
+MODEL_FILENAME = 'GatedMobileNetV2_SE_ISIC3B_seed42_ft10k_ep1.pth'
 MODEL_PATH = os.path.join(MODELS_DIR, MODEL_FILENAME)
 MODEL_DOWNLOAD_URL = ''      # in-repo artifact; no download required
 
