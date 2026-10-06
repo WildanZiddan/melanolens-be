@@ -1,0 +1,60 @@
+{
+  "artifact": "GatedMobileNetV2_SE_ISIC3B_ft60k_seed42_ep19.pth",
+  "architecture": "MobileNetV2 + SE trunk, multiplicatively gated by a 1x1-conv Dice-supervised localisation head",
+  "description": "Fine-tuned on the cleaned 60k ISIC-archive pool (binary labels) with auxiliary Dice supervision from the 900 expert lesion outlines (lambda=1.0). SE attention on the final 1280x7x7 map (reduction 16), gate = sigmoid(loc_head(F_att)) multiplying the feature map before pooling: F_pooled = AvgPool(F_att * A7), A28 = sigmoid(upsample(loc_head(F_att), 28)).",
+  "source_study": "Melanoma ablation study (ABLATION_STUDY) - final 30-epoch gated grid",
+  "source_arm": "runs_ep30/MobileNetV2+SE_FT1_DDS0_GATE1_seed42",
+  "source_checkpoint": "best-validation checkpoint, epoch 19 (per_epoch.csv is_best)",
+  "copied_from": "C:/Users/Pongo/Downloads/best4/MobileNetV2+SE_FT1_DDS0_GATE1_seed42_ep19.pth",
+  "epoch": 19,
+  "config": {
+    "fine_tuning": 1,
+    "dds": 0,
+    "gate": 1,
+    "seed": 42,
+    "epochs_budget": 30,
+    "best_val_epoch": 19,
+    "head_lr": 0.1,
+    "backbone_lr": 0.0001,
+    "lambda_dice": 1.0,
+    "dds_note": "DDS=0: this model reads the TRAINING-EXACT preprocessed image, not a DDPM-purified copy. gating_service.py preprocessing is already the training-exact recipe."
+  },
+  "why_this_model": "The study's best COMPLETE model (verdict + lesion map). It is the only gated fine-tuned CNN that satisfies both deployed requirements at once: classification AUC essentially tied with the grid best, and a gate that clears the 0.65 IoU localisation bar. CBAM FT+Gate has the top AUC (0.9743) but FAILS the IoU bar (0.5943); MobileNetV2 FT+Gate clears it (0.6622) but with lower AUC; SE FT+Gate clears it (0.6804) AND ties on AUC.",
+  "params_total": 2432515,
+  "params_note": "state_dict tensors sum to 2,466,679 because they include BatchNorm running stats and num_batches_tracked (buffers, not parameters)",
+  "gflops_224": 0.599,
+  "class_mapping": {
+    "class_to_idx": {"benign": 0, "malignant": 1},
+    "positive_idx": 1
+  },
+  "metrics_60k_test_split": {
+    "roc_auc": 0.9727,
+    "accuracy": 0.9151,
+    "precision": 0.9237,
+    "recall": 0.8918,
+    "f1": 0.9074,
+    "n_total": 8061,
+    "caveat": "the 60k pool overlaps the public ISIC 376-image benchmark test set (89.6% exact pHash duplicates) and 319 near-duplicates (pHash d=2-4) were kept, so these numbers are inflated relative to an external benchmark."
+  },
+  "metrics_900_test_localisation": {
+    "gate_map_iou_at_0.5": 0.6804,
+    "gate_map_soft_dice": 0.7790,
+    "gate_map_topk_iou": 0.7408,
+    "gradcam_iou_at_0.5": 0.2856,
+    "gradcam_topk_iou": 0.5015,
+    "n": 135,
+    "note": "gate map is the model's Dice-supervised localisation artifact; Grad-CAM is the post-hoc baseline. A mask-supervised map is not interchangeable with a post-hoc explanation - report which one a claim refers to."
+  },
+  "input": {
+    "shape": [1, 3, 224, 224],
+    "color_order": "RGB",
+    "normalisation": {"scale": "pixel/255", "mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]},
+    "preprocessing": "DullRazor hair removal (NO morphological OPEN), Shades-of-Grey power=6, aspect-preserving resize to 224 + zero pad"
+  },
+  "verification": {
+    "strict_load": "0 missing / 0 unexpected keys into gating_service.GatedMobileNetV2(attention_type='SE')",
+    "exported": "bare state_dict (optimizer/scheduler/scaler stripped); loads under the backend's torch 2.1.2+cpu / numpy 1.26.4",
+    "note": "the source .pth is a full training checkpoint; this artifact is the bare state_dict, matching the convention of the other files in models/"
+  },
+  "rollback": "Previous artifact retained in models/: set MODEL_FILENAME back to 'GatedMobileNetV2_SE_ISIC3B_seed42_ft10k_ep1.pth' (same SE-trunk architecture, strict load unchanged)"
+}

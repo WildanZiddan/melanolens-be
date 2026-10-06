@@ -208,6 +208,8 @@ def predict_lesion_api(
                 format_foto = f"data:{file.content_type};base64,{base64_encoded}"
                 
                 tds_str = f" [TDS: {prediction_result['abcd']['tds']}]" if "abcd" in prediction_result else ""
+                # scan_responGambar stores the API's heatmap_base64, which is the GATE map
+                # (the model's Dice-supervised localisation artifact) -- see gating_service.
                 new_scan = models.MelTrScan(
                     user_id=user_id,
                     scan_gambar=format_foto,

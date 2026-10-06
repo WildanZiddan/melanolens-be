@@ -242,18 +242,20 @@ def denormalize_image(img_tensor: torch.Tensor) -> np.ndarray:
 # ==============================================================================
 
 MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
-# Deployed model: gated MobileNetV2 with the SE trunk, lambda=1, gate head lr 3e-2,
-# seed 42 (runs/loc_experiment/20260912_221206_lrsweep_lr003/arms/gate_se_lam1_seed42).
-# Chosen actions on the 2026-09 study: best explanation + best malignant sensitivity of
-# any arm measured on the clean split. Seed 42 (not the best-AUC seed 2026) so the model
-# is not test-set selected and matches the previously deployed seed convention.
-# Rollback: the previous plain-trunk artifact was REMOVED from models/ (2026-09 study
-# cleanup). To go back, re-export it from the research arm
-# runs/loc_experiment/20260912_033756_gatefix/arms/gate_lam1_seed42/weights/model.pth,
-# drop it in models/, point MODEL_FILENAME at it and set attention_type=None -- the
-# plain-trunk checkpoint has no attention.* keys, so the strict load fails loudly
-# rather than running a mismatched model.
-MODEL_FILENAME = 'GatedMobileNetV2_SE_ISIC3B_seed42_ft10k_ep1.pth'
+# Deployed model: gated MobileNetV2 with the SE trunk, lambda=1, gate head lr 0.1,
+# seed 42, trained 30 epochs on the cleaned 60k pool + 900-mask Dice supervision
+# (ABLATION_STUDY runs_ep30/MobileNetV2+SE_FT1_DDS0_GATE1_seed42, best-validation ep19).
+# The study's best COMPLETE model: classification AUC tied with the grid best AND the
+# only fine-tuned gated CNN whose gate clears the 0.65 IoU bar (0.6804 vs CBAM FT+Gate's
+# 0.5943). DDS is OFF, so it reads the training-exact preprocessed image below.
+# Rollback: the previously deployed artifact is still present in models/ -- point
+# MODEL_FILENAME back at 'GatedMobileNetV2_SE_ISIC3B_seed42_ft10k_ep1.pth'. Same SE-trunk
+# architecture, so the strict load succeeds unchanged. (To go further back to the plain
+# trunk, re-export from runs/loc_experiment/20260912_033756_gatefix/arms/gate_lam1_seed42/
+# weights/model.pth and set attention_type=None -- the plain-trunk checkpoint has no
+# attention.* keys, so a mismatch fails the strict load loudly rather than running a
+# different model.)
+MODEL_FILENAME = 'GatedMobileNetV2_SE_ISIC3B_ft60k_seed42_ep19.pth'
 MODEL_PATH = os.path.join(MODELS_DIR, MODEL_FILENAME)
 MODEL_DOWNLOAD_URL = ''      # in-repo artifact; no download required
 
@@ -584,8 +586,13 @@ def predict_lesion(image_bytes: bytes):
         class_info = CLASS_LABELS[predicted_class_idx]
         is_malignant = (predicted_class_idx == POSITIVE_IDX)
 
-        # 5. both explanations
-        heatmap_b64 = gradcam_overlay(prep_img, tensor_x, target_class=predicted_class_idx)
+        # 5. both explanations. The GATE map is the primary served map: it is the model's
+        # own Dice-supervised localisation head and the only artifact that clears the
+        # 0.65 IoU bar (gate IoU@0.5 0.6804 vs Grad-CAM 0.2856 on the 900 test split).
+        # Grad-CAM is retained under gradcam_base64 as the post-hoc baseline -- the two are
+        # different kinds of artifact (supervised localiser vs gradient explanation) and
+        # must stay separately labelled.
+        gradcam_b64 = gradcam_overlay(prep_img, tensor_x, target_class=predicted_class_idx)
         gate_b64, gate_area, gate_mean = gate_map_overlay(tensor_x)
 
         # 6. clinical-AI concordance
@@ -613,15 +620,24 @@ def predict_lesion(image_bytes: bytes):
             'prob_malignant': round(prob_malignant * 100, 2),
             'color': class_info['color'],
             'recommendation': class_info['recommendation'],
-            'heatmap_base64': heatmap_b64,
+            # PRIMARY displayed map = the GATE map (changed 2026-10-05; it was Grad-CAM).
+            # Clients render heatmap_base64, so flipping this one field makes every surface
+            # (web scan panel, mobile scan, and the scan saved to the DB) show the map that
+            # actually meets the localisation requirement.
+            'heatmap_base64': gate_b64,
+            'heatmap_kind': 'gate_map',
             # --- added by the gating artifact ---
             'gate_map_base64': gate_b64,
+            'gradcam_base64': gradcam_b64,
             'gate_area_fraction': round(gate_area, 4),
             'gate_mean_activation': round(gate_mean, 4),
             'explanation': {
-                'gradcam': 'Grad-CAM on features[-1] (1280x7x7), the pipeline standard',
-                'gate_map': ('the model\'s own mask-supervised localization map A; on this model '
-                             'it localises the lesion better than Grad-CAM (Dice 0.816 vs IoU 0.4445)'),
+                'served': ("gate_map -- the model's Dice-supervised localisation head, trained on "
+                           "the 900 expert outlines; IoU@0.5 0.6804 on the 900 test split"),
+                'gate_map': ('the model\'s own mask-supervised localization map A; IoU@0.5 0.6804 '
+                             'on the 900 test split'),
+                'gradcam': ('post-hoc Grad-CAM on features[-1] (1280x7x7), retained for reference '
+                            'and comparison; IoU@0.5 0.2856'),
             },
             'class_mapping_note': 'index 0=benign, 1=malignant (OPPOSITE of the ViT model)',
         }
